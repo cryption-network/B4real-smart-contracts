@@ -1,0 +1,53 @@
+{
+  "name": "dapp_factory_fixed_apr",
+  "description": "",
+  "version": "1.0.0",
+  "main": "hardhat.config.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "coverage": "hardhat coverage",
+    "lint": "solhint --max-warnings 0 \"contracts/**/*.sol\"",
+    "prepublish": "rimraf build contracts/build artifacts cache",
+    "prepare": "env COMPILE_MODE=production npm run compile",
+    "test": "hardhat test",
+    "deployStakingPoolFixedAPR:matic": "HARDHAT_NETWORK=matic npx hardhat run scripts/deploy_staking_pool_fixed_apr.js",
+    "deployStakingPoolFixedAPR:mumbai": "HARDHAT_NETWORK=mumbai npx hardhat run scripts/deploy_staking_pool_fixed_apr.js",
+    "deployStakingPoolFixedAPRMerkle:matic": "HARDHAT_NETWORK=matic npx hardhat run scripts/deploy_staking_pool_fixed_apr_merkle.js",
+    "deployStakingPoolFixedAPRMerkle:mumbai": "HARDHAT_NETWORK=mumbai npx hardhat run scripts/deploy_staking_pool_fixed_apr_merkle.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cryption-network/dapp_factory_fixed_apr.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/cryption-network/dapp_factory_fixed_apr/issues"
+  },
+  "homepage": "https://github.com/cryption-network/dapp_factory_fixed_apr#readme",
+  "devDependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.0.2",
+    "@nomiclabs/hardhat-etherscan": "3.0.3",
+    "@nomiclabs/hardhat-solhint": "^2.0.0",
+    "@nomiclabs/hardhat-waffle": "^2.0.1",
+    "@tenderly/hardhat-tenderly": "^1.0.13",
+    "ethers": "^5.4.6",
+    "hardhat": "^2.9.1",
+    "solidity-coverage": "^0.7.17"
+  },
+  "dependencies": {
+    "@nomiclabs/hardhat-web3": "^2.0.0",
+    "@openzeppelin/contracts": "^3.4.0",
+    "@openzeppelin/contracts-upgradeable": "^3.4.0",
+    "@truffle/dashboard": "^0.1.4",
+    "chai": "^4.3.4",
+    "chai-as-promised": "^7.1.1",
+    "dotenv": "^10.0.0",
+    "keccak256": "^1.0.6",
+    "merkletreejs": "^0.2.32",
+    "web3": "^1.7.0"
+  }
+}
