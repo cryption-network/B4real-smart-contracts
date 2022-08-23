@@ -1,4 +1,4 @@
-# dapp-factory-fixed-apr-staking-pool
+# fixed-apr-staking-pool
 
 ### Install dependencies
 To install dependencies, run `npm i` on command line.
