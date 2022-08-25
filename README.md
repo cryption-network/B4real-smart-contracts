@@ -14,14 +14,14 @@ Add `PRIVATE_KEY` and `ETHERSCAN_KEY` environment variables.
 Deployment scripts of smart contracts can be found under `scripts` folder. Refer package json for deployement of contracts on mumbai matic testnet and polygon network.
 
 ### Run tests
-To run test-case for StakingPoolFixedAPR contract, execute below on command line :
+To run test-case for StakingPoolUpdatableFixedAPR contract, execute below on command line :
 ```
-npx hardhat test test/testStakingFixedAPR.js
+npx hardhat test test/testStakingPoolUpdatableFixedAPR.js
 ```
 
-To run test-case for StakingPoolFixedAPRMerkleWhitelisting contract, execute below on command line :
+To run test-case for StakingPoolUpdatableFixedAPRWhitelisting contract, execute below on command line :
 ```
-npx hardhat test test/testStakingFixedAPRMerkleWhitelisting.js
+npx hardhat test test/testStakingPoolUpdatableFixedAPRWhitelisting.js
 ```
 
 
