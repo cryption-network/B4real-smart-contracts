@@ -13,10 +13,10 @@
     "prepublish": "rimraf build contracts/build artifacts cache",
     "prepare": "env COMPILE_MODE=production npm run compile",
     "test": "hardhat test",
-    "deployStakingPoolFixedAPR:matic": "HARDHAT_NETWORK=matic npx hardhat run scripts/deploy_staking_pool_fixed_apr.js",
-    "deployStakingPoolFixedAPR:mumbai": "HARDHAT_NETWORK=mumbai npx hardhat run scripts/deploy_staking_pool_fixed_apr.js",
-    "deployStakingPoolFixedAPRMerkle:matic": "HARDHAT_NETWORK=matic npx hardhat run scripts/deploy_staking_pool_fixed_apr_merkle.js",
-    "deployStakingPoolFixedAPRMerkle:mumbai": "HARDHAT_NETWORK=mumbai npx hardhat run scripts/deploy_staking_pool_fixed_apr_merkle.js"
+    "deployStakingPoolFixedAPR:matic": "HARDHAT_NETWORK=matic npx hardhat run scripts/deploy_staking_pool_updateable_fixed_apr.js",
+    "deployStakingPoolFixedAPR:mumbai": "HARDHAT_NETWORK=mumbai npx hardhat run scripts/deploy_staking_pool_updateable_fixed_apr.js",
+    "deployStakingPoolFixedAPRMerkle:matic": "HARDHAT_NETWORK=matic npx hardhat run scripts/deploy_staking_pool_fixed_apr_updateable_merkle.js",
+    "deployStakingPoolFixedAPRMerkle:mumbai": "HARDHAT_NETWORK=mumbai npx hardhat run scripts/deploy_staking_pool_fixed_apr_updateable_merkle.js"
   },
   "repository": {
     "type": "git",

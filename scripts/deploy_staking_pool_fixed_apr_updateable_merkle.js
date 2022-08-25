@@ -20,10 +20,10 @@ async function main() {
   // await hre.run('compile');
 
   // We get the contract to deploy
-  const StakingPoolFixedAPRMerkleWhitelisting = await hre.ethers.getContractFactory("StakingPoolFixedAPRMerkleWhitelisting");
-  const stakingPoolFixedAPRMerkleWhitelistingInstance = await StakingPoolFixedAPRMerkleWhitelisting.deploy();
+  const StakingPoolUpdatableFixedAPRWhitelisting = await hre.ethers.getContractFactory("StakingPoolUpdatableFixedAPRWhitelisting");
+  const stakingPoolFixedAPRMerkleWhitelistingInstance = await StakingPoolUpdatableFixedAPRWhitelisting.deploy();
 
-  console.log('StakingPoolFixedAPRMerkleWhitelisting address ', stakingPoolFixedAPRMerkleWhitelistingInstance.address);
+  console.log('StakingPoolUpdatableFixedAPRWhitelisting address ', stakingPoolFixedAPRMerkleWhitelistingInstance.address);
 
   await sleep(20000);
 

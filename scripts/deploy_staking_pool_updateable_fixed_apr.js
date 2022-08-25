@@ -20,15 +20,15 @@ async function main() {
   // await hre.run('compile');
 
   // We get the contract to deploy
-  const StakingPoolFixedAPR = await hre.ethers.getContractFactory("StakingPoolFixedAPR");
-  const stakingPoolFixedAPRInstance = await StakingPoolFixedAPR.deploy();
+  const StakingPoolUpdatableFixedAPR = await hre.ethers.getContractFactory("StakingPoolUpdatableFixedAPR");
+  const stakingPoolUpdateableFixedAPRInstance = await StakingPoolUpdatableFixedAPR.deploy();
 
-  console.log('StakingPoolFixedAPR address ', stakingPoolFixedAPRInstance.address);
+  console.log('StakingPoolUpdatableFixedAPR address ', stakingPoolUpdateableFixedAPRInstance.address);
 
   await sleep(20000);
 
   await hre.run("verify:verify", {
-    address: stakingPoolFixedAPRInstance.address,
+    address: stakingPoolUpdateableFixedAPRInstance.address,
     constructorArguments: [
     ],
   });

@@ -16,12 +16,12 @@ Deployment scripts of smart contracts can be found under `scripts` folder. Refer
 ### Run tests
 To run test-case for StakingPoolUpdatableFixedAPR contract, execute below on command line :
 ```
-npx hardhat test test/testStakingPoolUpdatableFixedAPR.js
+npx hardhat test test/deploy_staking_pool_updateable_fixed_apr.js
 ```
 
 To run test-case for StakingPoolUpdatableFixedAPRWhitelisting contract, execute below on command line :
 ```
-npx hardhat test test/testStakingPoolUpdatableFixedAPRWhitelisting.js
+npx hardhat test test/deploy_staking_pool_fixed_apr_updateable_merkle.js
 ```
 
 
