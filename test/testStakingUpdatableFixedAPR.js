@@ -3,7 +3,6 @@ var chaiAsPromised = require("chai-as-promised");
 
 chai.use(chaiAsPromised);
 
-var assert = chai.assert;
 const { expect } = require("chai");
 
 const { ethers } = require("hardhat");
@@ -13,7 +12,14 @@ const Web3 = require('web3');
 const { parseEther } = require("ethers/lib/utils");
 const web3 = new Web3('');
 
-describe("StakingPoolFixedAPR", function async() {
+async function getCurrentTimestamp() {
+  let currentBlockNumber = await ethers.provider.getBlockNumber();
+  const block = await ethers.provider.getBlock(currentBlockNumber);
+  const timestamp = block.timestamp;
+  return timestamp;
+}
+
+describe("StakingPoolUpdatableFixedAPR", function async() {
   const depositAmount = BigNumber.from("10000000000000000");
 
   function calculateYearlyRewards(withdrawalTime, depositTime, rewardAmount) {
@@ -39,13 +45,14 @@ describe("StakingPoolFixedAPR", function async() {
     accounts,
     rewardToken1Instance,
     initParams,
+    feeAddress,
     routerAddress;
 
   let initialBlockNumber, endTimestamp;
   let encodedData;
 
   const blockRewardForToken1 = "100000000000000";
-  let expectedAPR = 2500;
+  let expectedAPR = "250000000000000000"; // 25%
 
   beforeEach(async () => {
     accounts = await ethers.getSigners();
@@ -85,10 +92,6 @@ describe("StakingPoolFixedAPR", function async() {
       18
     );
 
-    const FeeManager = await ethers.getContractFactory('MockFeeManager');
-
-    const feeManager = await FeeManager.connect(owner).deploy();
-
     const currentBlockNumber = await ethers.provider.getBlockNumber();
     const blockBefore = await ethers.provider.getBlock(currentBlockNumber);
     const timestampBefore = blockBefore.timestamp;
@@ -122,22 +125,18 @@ describe("StakingPoolFixedAPR", function async() {
         'uint16', 'address',
         'string', 'string',
         'address', 'uint256',
-        'uint256', 'uint256'
       ],
       [
         initParams.rewardToken, initParams.lpToken,
         initParams.startBlock, initParams.endBlock,
-        initParams.amount, initParams.blockReward,
+        initParams.amount, expectedAPR,
         initParams.harvestInterval, '0xb60B993862673A87C16E4e6e5F75397131EEBb3e',
         initParams.withdrawalFeeBP, owner.address,
         "https://ipfs.infura.io/ipfs/QmTfuFKToyzLCJWd3wgX9CeewdWsosY9H4B2CUHftp76kc", "https://ipfs.infura.io/ipfs/QmTfuFKToyzLCJWd3wgX9CeewdWsosY9H4B2CUHftp76kc",
-        routerAddress, initParams.endBlockDuration,
-        initParams.maxAllowedDeposit,
-        expectedAPR
+        routerAddress, initParams.endBlockDuration
       ]
     );
-
-    const StakingPoolAPRContract = await ethers.getContractFactory('StakingPoolFixedAPR');
+    const StakingPoolAPRContract = await ethers.getContractFactory('StakingPoolUpdatableFixedAPR');
 
     stakingPoolInstance = await StakingPoolAPRContract.connect(owner).deploy();
 
@@ -156,18 +155,20 @@ describe("StakingPoolFixedAPR", function async() {
     const blockBefore = await ethers.provider.getBlock(currentBlockNumber);
     const beforeDepositTimestamp = blockBefore.timestamp;
 
+    console.log('before deposit timestamp ',await getCurrentTimestamp());
     await stakingPoolInstance.connect(depositor1).deposit(depositAmount);
-
+    
     await setBlockTimestamp(Number(endTimestamp));
     console.log('endTimestamp ', endTimestamp);
+    console.log('before withdraw timestamp ', await getCurrentTimestamp());
     await stakingPoolInstance.connect(depositor1).withdraw(depositAmount);
 
     const balanceOfDepositor = await rewardToken1Instance.balanceOf(
       depositor1.address
     );
 
-    const rewardAmount = "3488077118";
-
+    const rewardAmount = "3488077076";
+    console.log('beforeDepositTimestamp ', beforeDepositTimestamp);
     const calculatedAPR = calculateYearlyRewards(Number(endTimestamp) + 1, Number(beforeDepositTimestamp) + 1, rewardAmount);
 
     console.log('calculated APR ', calculatedAPR);
@@ -181,10 +182,8 @@ describe("StakingPoolFixedAPR", function async() {
       .connect(depositor1)
       .approve(stakingPoolInstance.address, depositAmount);
 
-    let currentBlockNumber = await ethers.provider.getBlockNumber();
-    const blockBefore = await ethers.provider.getBlock(currentBlockNumber);
-
     await stakingPoolInstance.connect(depositor1).deposit(depositAmount);
+    await setBlockTimestamp(Number(endTimestamp) - 1);
 
     console.log('endTimestamp ', endTimestamp);
     await stakingPoolInstance.connect(depositor1).withdraw(depositAmount);
@@ -194,7 +193,7 @@ describe("StakingPoolFixedAPR", function async() {
     );
 
     console.log('balanceOfDepositor ', balanceOfDepositor.toString());
-    expect(balanceOfDepositor.toString()).to.equal("0");
+    expect(balanceOfDepositor.toString()).to.equal("3488077076");
   });
 
   it("should sucessfully withdraw reward when 2 users deposit", async function () {
@@ -237,7 +236,7 @@ describe("StakingPoolFixedAPR", function async() {
       depositor2.address
     );
 
-    const rewardAmount = "3488077118";
+    const rewardAmount = "3488077089";
 
     const calculatedAPR = calculateYearlyRewards(beforeDepositTimestamp + 1, afterWithdrawalTimestampDepositor1, rewardAmount);
 
@@ -246,6 +245,106 @@ describe("StakingPoolFixedAPR", function async() {
     console.log('balanceOfDepositor 1 ', balanceOfDepositor.toString());
     console.log('balanceOfDepositor 2 ', balanceOfDepositor2.toString());
     expect(balanceOfDepositor.toString()).to.equal(rewardAmount);
-    expect(balanceOfDepositor2.toString()).to.equal("1545852359");
+    expect(balanceOfDepositor2.toString()).to.equal("1545852347");
   });
+
+  it("should sucessfully withdraw reward when 2 users deposit after increasing APR", async function () {
+    const startTimestamp = await getCurrentTimestamp();
+    const endTimestamp = startTimestamp + 300;
+    encodedData = web3.eth.abi.encodeParameters(
+      [
+        'address', 'address',
+        'uint256', 'uint256',
+        'uint256', 'uint256',
+        'uint256', 'address',
+        'uint16', 'address',
+        'string', 'string',
+        'address', 'uint256',
+        'uint256',
+      ],
+      [
+        initParams.rewardToken, initParams.lpToken,
+        startTimestamp, endTimestamp,
+        initParams.amount, expectedAPR,
+        initParams.harvestInterval, '0xb60B993862673A87C16E4e6e5F75397131EEBb3e',
+        initParams.withdrawalFeeBP, owner.address,
+        "https://ipfs.infura.io/ipfs/QmTfuFKToyzLCJWd3wgX9CeewdWsosY9H4B2CUHftp76kc", "https://ipfs.infura.io/ipfs/QmTfuFKToyzLCJWd3wgX9CeewdWsosY9H4B2CUHftp76kc",
+        routerAddress, endTimestamp,
+        initParams.maxAllowedDeposit,
+      ]
+    );
+
+    const StakingPoolAPRContract = await ethers.getContractFactory('StakingPoolUpdatableFixedAPR');
+
+    let stakingPoolUpdateableAPRInstance = await StakingPoolAPRContract.connect(owner).deploy();
+
+    await rewardToken1Instance
+      .connect(owner)
+      .approve(stakingPoolUpdateableAPRInstance.address, initParams.amount);
+    await stakingPoolUpdateableAPRInstance.connect(owner).init(encodedData);
+
+    await lpTokenInstance
+      .connect(depositor1)
+      .approve(stakingPoolUpdateableAPRInstance.address, depositAmount);
+    await lpTokenInstance
+      .connect(depositor2)
+      .approve(stakingPoolUpdateableAPRInstance.address, depositAmount);
+
+    let currentBlockNumber = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(currentBlockNumber);
+    const beforeDepositTimestamp = blockBefore.timestamp;
+    await stakingPoolUpdateableAPRInstance.connect(depositor1).deposit(depositAmount);
+
+    await stakingPoolUpdateableAPRInstance.connect(depositor2).deposit(depositAmount);
+
+    await setBlockTimestamp(Number(endTimestamp) - 100);
+
+    // user 1 withdraw
+    await stakingPoolUpdateableAPRInstance.connect(depositor1).withdraw(depositAmount);
+    currentBlockNumber = await ethers.provider.getBlockNumber();
+    let blockAfterWithdrawal;
+    blockAfterWithdrawal = await ethers.provider.getBlock(currentBlockNumber);
+
+    // user 2 withdraw
+    await stakingPoolUpdateableAPRInstance.connect(depositor2).withdraw(depositAmount);
+
+    const balanceOfDepositor = await rewardToken1Instance.balanceOf(
+      depositor1.address
+    );
+
+    const balanceOfDepositor2 = await rewardToken1Instance.balanceOf(
+      depositor2.address
+    );
+
+    const rewardAmount = "15458523502";
+
+    console.log('balanceOfDepositor 1 ', balanceOfDepositor.toString());
+    console.log('balanceOfDepositor 2 ', balanceOfDepositor2.toString());
+    expect(balanceOfDepositor.toString()).to.equal(rewardAmount);
+    expect(balanceOfDepositor2.toString()).to.equal("15458523502");
+
+    const newAPR = BigNumber.from((30 / 100 * 1e18).toString()); // 30%
+    await stakingPoolUpdateableAPRInstance.connect(owner).updateExpectedAPR(newAPR, 0);
+
+    await lpTokenInstance
+      .connect(depositor1)
+      .approve(stakingPoolUpdateableAPRInstance.address, depositAmount);
+    await lpTokenInstance
+      .connect(depositor2)
+      .approve(stakingPoolUpdateableAPRInstance.address, depositAmount);
+    await stakingPoolUpdateableAPRInstance.connect(depositor1).deposit(depositAmount);
+    await stakingPoolUpdateableAPRInstance.connect(depositor2).deposit(depositAmount / 2);
+
+    await setBlockTimestamp(Number(endTimestamp));
+    await stakingPoolUpdateableAPRInstance.connect(depositor1).withdraw(depositAmount);
+    await stakingPoolUpdateableAPRInstance.connect(depositor2).withdraw(depositAmount / 2);
+
+    const depositor1Withdrawal = await rewardToken1Instance.balanceOf(depositor1.address);
+
+    const depositor2Withdrawal = await rewardToken1Instance.balanceOf(depositor2.address);
+
+    expect(depositor1Withdrawal.toString()).to.equal("24400684783");
+    expect(depositor2Withdrawal.toString()).to.equal("19882039455");
+  });
+
 });
