@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.7.6;
 
-import "../library/TransferHelper.sol";
-import "../Interface/IERC20.sol";
-import "../library/Ownable.sol";
-import "../Metadata.sol";
+import "./library/TransferHelper.sol";
+import "./Interface/IERC20.sol";
+import "./library/Ownable.sol";
+import "./Metadata.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
