@@ -165,7 +165,7 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
 
         uint8 inputTokenDecimals = _inputToken.decimals();
         uint256 tokenPurchased = inputTokenDecimals >= 18
-            ? _inputTokenAmount.mul(inputTokenRate[address(_inputToken)]).mul(
+            ? _inputTokenAmount.mul(inputTokenRate[address(_inputToken)]).div(
                 10**(inputTokenDecimals - 18)
             )
             : _inputTokenAmount.mul(inputTokenRate[address(_inputToken)]).mul(
