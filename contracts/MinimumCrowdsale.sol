@@ -80,6 +80,14 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
         uint256 indexed crowdsaleTokenAllocated
     );
 
+    modifier isCrowdsaleActive() {
+        require(
+            _getNow() <= crowdsaleEndTime || crowdsaleEndTime == 0,
+            "Crowdsale is not active"
+        );
+        _;
+    }
+
     /**
      * @notice Initializes the Crowdsale contract. This is called only once upon Crowdsale creation.
      */
@@ -129,33 +137,6 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
         }
 
         initialized = true;
-    }
-
-    modifier isCrowdsaleActive() {
-        require(
-            _getNow() <= crowdsaleEndTime || crowdsaleEndTime == 0,
-            "Crowdsale is not active"
-        );
-        _;
-    }
-
-    function updateTokenURL(address _tokenAddress, string memory _url)
-        external
-        onlyOwner
-    {
-        updateMetaURL(_tokenAddress, _url);
-        emit URLUpdated(_tokenAddress, _url);
-    }
-
-    function updateInputTokenRate(address _inputToken, uint256 _rate)
-        external
-        onlyOwner
-    {
-        inputTokenRate[_inputToken] = _rate;
-
-        validInputToken[_inputToken] = true;
-
-        emit TokenRateUpdated(_inputToken, _rate);
     }
 
     function purchaseToken(IERC20 _inputToken, uint256 _inputTokenAmount)
@@ -216,57 +197,23 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
         );
     }
 
-    function _updateVestingSchedule(address _investor, uint256 _amount)
-        internal
-    {
-        require(_investor != address(0), "Beneficiary cannot be empty");
-        require(_amount > 0, "Amount cannot be empty");
-
-        vestedAmount[_investor] = vestedAmount[_investor].add(_amount);
-    }
-
-    /**
-     * @notice Vesting schedule and associated data for an investor
-     * @return _amount
-     */
-    function vestingScheduleForBeneficiary(address _investor)
+    function updateTokenURL(address _tokenAddress, string memory _url)
         external
-        view
-        returns (uint256 _amount)
+        onlyOwner
     {
-        return (vestedAmount[_investor]);
+        updateMetaURL(_tokenAddress, _url);
+        emit URLUpdated(_tokenAddress, _url);
     }
 
-    function _getNow() internal view returns (uint256) {
-        return block.timestamp;
-    }
-
-    function getContractTokenBalance(IERC20 _token)
-        public
-        view
-        returns (uint256)
+    function updateInputTokenRate(address _inputToken, uint256 _rate)
+        external
+        onlyOwner
     {
-        return _token.balanceOf(address(this));
-    }
+        inputTokenRate[_inputToken] = _rate;
 
-    function endCrowdsale() external onlyOwner {
-        crowdsaleEndTime = _getNow();
+        validInputToken[_inputToken] = true;
 
-        if (crowdsaleTokenAllocated != 0) {
-            withdrawFunds(token, crowdsaleTokenAllocated); //when crowdsaleEnds withdraw unsold tokens to the owner
-        }
-        emit CrowdsaleEndedManually(crowdsaleEndTime);
-    }
-
-    function withdrawFunds(IERC20 _token, uint256 amount) public onlyOwner {
-        require(
-            getContractTokenBalance(_token) >= amount,
-            "the contract doesnt have tokens"
-        );
-
-        TransferHelper.safeTransfer(address(_token), msg.sender, amount);
-
-        emit FundsWithdrawn(msg.sender, _token, amount);
+        emit TokenRateUpdated(_inputToken, _rate);
     }
 
     /**
@@ -293,7 +240,60 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
         emit CrowdsaleTokensAllocationUpdated(crowdsaleTokenAllocated);
     }
 
+    function endCrowdsale() external onlyOwner {
+        crowdsaleEndTime = _getNow();
+
+        if (crowdsaleTokenAllocated != 0) {
+            withdrawFunds(token, crowdsaleTokenAllocated); //when crowdsaleEnds withdraw unsold tokens to the owner
+        }
+        emit CrowdsaleEndedManually(crowdsaleEndTime);
+    }
+
+    /**
+     * @notice Vesting schedule and associated data for an investor
+     * @return _amount
+     */
+    function vestingScheduleForBeneficiary(address _investor)
+        external
+        view
+        returns (uint256 _amount)
+    {
+        return (vestedAmount[_investor]);
+    }
+
     function getValidInputTokens() external view returns (IERC20[] memory) {
         return inputToken;
+    }
+
+    function withdrawFunds(IERC20 _token, uint256 amount) public onlyOwner {
+        require(
+            getContractTokenBalance(_token) >= amount,
+            "the contract doesnt have tokens"
+        );
+
+        TransferHelper.safeTransfer(address(_token), msg.sender, amount);
+
+        emit FundsWithdrawn(msg.sender, _token, amount);
+    }
+
+    function getContractTokenBalance(IERC20 _token)
+        public
+        view
+        returns (uint256)
+    {
+        return _token.balanceOf(address(this));
+    }
+
+    function _updateVestingSchedule(address _investor, uint256 _amount)
+        internal
+    {
+        require(_investor != address(0), "Beneficiary cannot be empty");
+        require(_amount > 0, "Amount cannot be empty");
+
+        vestedAmount[_investor] = vestedAmount[_investor].add(_amount);
+    }
+
+    function _getNow() internal view returns (uint256) {
+        return block.timestamp;
     }
 }
