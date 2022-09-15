@@ -10,6 +10,8 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
     using SafeMath for uint256;
+    using SafeMath for uint128;
+    using SafeMath for uint8;
 
     ///@notice TokenAddress available for purchase in this Crowdsale
     IERC20 public token;
@@ -70,11 +72,13 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
     /// @notice event emitted when the owner updates max token allocation per user
     event MaxAllocationUpdated(uint256 indexed newAllocation);
 
-    event URLUpdated(string _tokenUrl);
+    event URLUpdated(address _tokenAddress, string _tokenUrl);
 
     event TokenRateUpdated(address inputToken, uint256 rate);
-    
-    event CrowdsaleTokensAllocationUpdated(uint256 indexed crowdsaleTokenAllocated);
+
+    event CrowdsaleTokensAllocationUpdated(
+        uint256 indexed crowdsaleTokenAllocated
+    );
 
     /**
      * @notice Initializes the Crowdsale contract. This is called only once upon Crowdsale creation.
@@ -135,12 +139,12 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
         _;
     }
 
-    function updateTokenURL(address tokenAddress, string memory _url)
+    function updateTokenURL(address _tokenAddress, string memory _url)
         external
         onlyOwner
     {
-        updateMetaURL(tokenAddress, _url);
-        emit URLUpdated(_url);
+        updateMetaURL(_tokenAddress, _url);
+        emit URLUpdated(_tokenAddress, _url);
     }
 
     function updateInputTokenRate(address _inputToken, uint256 _rate)
@@ -254,10 +258,7 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
         emit CrowdsaleEndedManually(crowdsaleEndTime);
     }
 
-    function withdrawFunds(IERC20 _token, uint256 amount)
-        public
-        onlyOwner
-    {
+    function withdrawFunds(IERC20 _token, uint256 amount) public onlyOwner {
         require(
             getContractTokenBalance(_token) >= amount,
             "the contract doesnt have tokens"
@@ -279,7 +280,7 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
         maxUserAllocation = _maxUserAllocation;
         emit MaxAllocationUpdated(_maxUserAllocation);
     }
-    
+
     /**
      * @dev Update max tokens allocated to crowdsale
      * Can only be called by the current owner.
