@@ -141,6 +141,7 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
 
     function purchaseToken(IERC20 _inputToken, uint256 _inputTokenAmount)
         external
+        nonReentrant
         isCrowdsaleActive
     {
         require(
