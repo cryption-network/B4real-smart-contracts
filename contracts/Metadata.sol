@@ -3,9 +3,9 @@ pragma solidity 0.7.6;
 
 contract Metadata {
     struct TokenMetadata {
+        bool isAdded;
         address routerAddress;
         string imageUrl;
-        bool isAdded;
     }
 
     mapping(address => TokenMetadata) public tokenMeta;
@@ -17,9 +17,9 @@ contract Metadata {
     ) internal {
         if (_tokenAddress != address(0)) {
             tokenMeta[_tokenAddress] = TokenMetadata({
+                isAdded: true,
                 routerAddress: _routerAddress,
-                imageUrl: _imageUrl,
-                isAdded: true
+                imageUrl: _imageUrl
             });
         }
     }
