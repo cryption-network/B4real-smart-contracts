@@ -3,20 +3,18 @@
 // File contracts/StakingPool.sol
 pragma solidity 0.7.6;
 
-import "./library/IPolydexPair.sol";
 import "./library/TransferHelper.sol";
 import "./library/Ownable.sol";
 import "./Metadata.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./IERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
     using SafeMath for uint256;
     using SafeMath for uint16;
-    using SafeERC20 for IERC20;
+    using Address for address;
 
     /// @notice information stuct on each user than stakes LP tokens.
     struct UserInfo {
@@ -42,11 +40,11 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         uint256 numFarmers;
         uint256 harvestInterval; // Harvest interval in seconds
         IERC20 inputToken;
-        uint16 withdrawalFeeBP; // Deposit fee in basis points
+        uint16 withdrawalFeeBP; // Withdrawal fee in basis points
         uint256 endTimestamp;
     }
 
-    // Deposit Fee address
+    // Withdrawal Fee address
     address public feeAddress;
     // Max harvest interval: 14 days.
     uint256 public constant MAXIMUM_HARVEST_INTERVAL = 14 days;
@@ -71,8 +69,10 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
 
     bool public initialized;
 
-    // if target APR is 20%, then expectedAPR =  ( 20 / 100 ) * e18. Percentage APR is scaled up by e18.
-    uint256 public expedtedAPR;
+    uint256 public maxAllowedDeposit;
+
+    // if target APR is 20%, then expectedAPR =  ( 20 / 100 ) * 1e18. Percentage APR is scaled up by e18.
+    uint256 public expectedAPR;
 
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
@@ -108,11 +108,11 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         // Decoding is done in two parts due to stack too deep issue.
         (
             _localVars._rewardToken,
+            _localVars._amount,
             farmInfo.inputToken,
             _localVars._startTimestamp,
-            _localVars._endTimestamp,
-            _localVars._amount
-        ) = abi.decode(extraData, (IERC20, IERC20, uint256, uint256, uint256));
+            _localVars._endTimestamp
+        ) = abi.decode(extraData, (IERC20, uint256, IERC20, uint256, uint256));
 
         string memory _rewardTokenUrl;
         (
@@ -121,7 +121,7 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
             ,
             ,
             ,
-            expedtedAPR,
+            expectedAPR,
             farmInfo.harvestInterval,
             feeAddress,
             farmInfo.withdrawalFeeBP,
@@ -130,8 +130,8 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
             extraData,
             (
                 IERC20,
-                IERC20,
                 uint256,
+                IERC20,
                 uint256,
                 uint256,
                 uint256,
@@ -158,13 +158,14 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
             _rewardTokenUrl,
             inputTokenUrl,
             routerAddress,
-            farmInfo.endTimestamp
+            farmInfo.endTimestamp,
+            maxAllowedDeposit
         ) = abi.decode(
             extraData,
             (
                 IERC20,
-                IERC20,
                 uint256,
+                IERC20,
                 uint256,
                 uint256,
                 uint256,
@@ -175,12 +176,14 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
                 string,
                 string,
                 address,
+                uint256,
                 uint256
             )
         );
 
-        updateMeta(address(farmInfo.inputToken), routerAddress, inputTokenUrl);
-        updateMeta(
+        _initMetaOwner(owner);
+        _updateMeta(address(farmInfo.inputToken), routerAddress, inputTokenUrl);
+        _updateMeta(
             address(_localVars._rewardToken),
             address(0),
             _rewardTokenUrl
@@ -201,10 +204,11 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
             address(this),
             _localVars._amount
         );
-        // require(
-        //     farmInfo.endTimestamp >= block.timestamp,
-        //     "End block timestamp must be greater than current timestamp"
-        // );
+
+        require(
+            farmInfo.endTimestamp >= block.timestamp,
+            "End block timestamp must be greater than current timestamp"
+        );
         require(
             farmInfo.endTimestamp > _localVars._startTimestamp,
             "Invalid start timestamp"
@@ -262,13 +266,12 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         return to.sub(_from, "from getMultiplier");
     }
 
-    function updateRewardTokenURL(uint256 _rewardTokenIndex, string memory _url)
+    function updateMaxAllowedDeposit(uint256 _maxAllowedDeposit)
         external
         onlyOwner
     {
-        RewardInfo storage rewardInfo = rewardPool[_rewardTokenIndex];
-        updateMetaURL(address(rewardInfo.rewardToken), _url);
-        emit RewardTokenURLUpdated(_url, _rewardTokenIndex);
+        maxAllowedDeposit = _maxAllowedDeposit;
+        emit MaxAllowedDepositUpdated(_maxAllowedDeposit);
     }
 
     function updateWithdrawalFee(uint16 _withdrawalFee, bool _massUpdate)
@@ -366,7 +369,7 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
             _amount
         );
 
-        updateMeta(address(_rewardToken), address(0), _tokenUrl);
+        _updateMeta(address(_rewardToken), address(0), _tokenUrl);
         _updateRewardPerSecond();
         emit RewardTokenAdded(_rewardToken);
     }
@@ -384,11 +387,17 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
             RewardPerSecond = ( APR * Total deposited ) / ( SECONDS_IN_YEAR )
         */
         uint256 totalRewardPools = rewardPool.length;
+        uint256 inputTokenDecimals = farmInfo.inputToken.decimals();
+
         for (uint256 i = 0; i < totalRewardPools; i++) {
             RewardInfo storage rewardInfo = rewardPool[i];
+            uint256 rewardTokenDecimals = rewardInfo.rewardToken.decimals();
             uint256 effectiveRewardPerSecond = (
-                expedtedAPR.mul(totalInputTokensStaked)
-            ).div(SECONDS_IN_YEAR * 1e18);
+                expectedAPR
+                    .mul(totalInputTokensStaked)
+                    .mul(10**rewardTokenDecimals)
+                    .mul(1e18)
+            ).div((10**inputTokenDecimals).mul(SECONDS_IN_YEAR * 1e18));
             rewardInfo.blockRewardPerSec = effectiveRewardPerSecond;
         }
     }
@@ -420,7 +429,7 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
             );
             uint256 tokenReward = multiplier.mul(rewardInfo.blockRewardPerSec);
             accRewardPerShare = accRewardPerShare.add(
-                tokenReward.mul(1e18).div(lpSupply)
+                tokenReward.div(lpSupply)
             );
         }
 
@@ -463,7 +472,7 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         );
         uint256 tokenReward = multiplier.mul(rewardInfo.blockRewardPerSec);
         rewardInfo.accRewardPerShare = rewardInfo.accRewardPerShare.add(
-            tokenReward.mul(1e18).div(lpSupply)
+            tokenReward.div(lpSupply)
         );
         rewardInfo.lastRewardBlockTimestamp = block.timestamp <
             rewardInfo.endTimestamp
@@ -482,6 +491,10 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
     }
 
     function _deposit(uint256 _amount, address _user) internal {
+        require(
+            totalInputTokensStaked.add(_amount) <= maxAllowedDeposit,
+            "Max allowed deposit exceeded"
+        );
         UserInfo storage user = userInfo[_user];
         user.whiteListedHandlers[_user] = true;
         payOrLockupPendingReward(_user, _user);
@@ -489,7 +502,8 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
             farmInfo.numFarmers++;
         }
         if (_amount > 0) {
-            farmInfo.inputToken.safeTransferFrom(
+            TransferHelper.safeTransferFrom(
+                address(farmInfo.inputToken),
                 address(msg.sender),
                 address(this),
                 _amount
@@ -537,13 +551,22 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
                 uint256 withdrawalFee = _amount
                     .mul(farmInfo.withdrawalFeeBP)
                     .div(10000);
-                farmInfo.inputToken.safeTransfer(feeAddress, withdrawalFee);
-                farmInfo.inputToken.safeTransfer(
+                TransferHelper.safeTransfer(
+                    address(farmInfo.inputToken),
+                    feeAddress,
+                    withdrawalFee
+                );
+                TransferHelper.safeTransfer(
+                    address(farmInfo.inputToken),
                     address(_withdrawer),
                     _amount.sub(withdrawalFee)
                 );
             } else {
-                farmInfo.inputToken.safeTransfer(address(_withdrawer), _amount);
+                TransferHelper.safeTransfer(
+                    address(farmInfo.inputToken),
+                    address(_withdrawer),
+                    _amount
+                );
             }
         }
         totalInputTokensStaked = totalInputTokensStaked.sub(_amount);
@@ -567,9 +590,14 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         uint256 totalRewardPools = rewardPool.length;
         for (uint256 i = 0; i < totalRewardPools; i++) {
             user.rewardDebt[rewardPool[i].rewardToken] = 0;
+            user.rewardLockedUp[rewardPool[i].rewardToken] = 0;
         }
         _updateRewardPerSecond();
-        farmInfo.inputToken.safeTransfer(address(msg.sender), user.amount);
+        TransferHelper.safeTransfer(
+            address(farmInfo.inputToken),
+            address(msg.sender),
+            user.amount
+        );
         emit EmergencyWithdraw(msg.sender, user.amount);
     }
 
@@ -679,7 +707,7 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         onlyOwner
     {
         massUpdatePools();
-        expedtedAPR = _expectedAPR;
+        expectedAPR = _expectedAPR;
         _updateRewardPerSecond();
         emit ExpectedAprUpdated(_expectedAPR, _rewardTokenIndex);
     }
@@ -689,6 +717,10 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         onlyOwner
     {
         RewardInfo storage rewardInfo = rewardPool[_rewardTokenIndex];
+        require(
+            rewardInfo.rewardToken.balanceOf(address(this)) >= _amount,
+            "Insufficient reward token balance"
+        );
 
         TransferHelper.safeTransfer(
             address(rewardInfo.rewardToken),
@@ -707,11 +739,10 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         uint256 _amount,
         IERC20 _rewardToken
     ) private {
-        uint256 rewardBal = _rewardToken.balanceOf(address(this));
-        if (_amount > rewardBal) {
-            TransferHelper.safeTransfer(address(_rewardToken), _to, rewardBal);
-        } else {
-            TransferHelper.safeTransfer(address(_rewardToken), _to, _amount);
-        }
+        require(
+            _rewardToken.balanceOf(address(this)) >= _amount,
+            "Insufficient reward token balance"
+        );
+        TransferHelper.safeTransfer(address(_rewardToken), _to, _amount);
     }
 }

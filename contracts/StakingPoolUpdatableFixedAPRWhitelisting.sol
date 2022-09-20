@@ -189,8 +189,9 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
             )
         );
 
-        updateMeta(address(farmInfo.inputToken), routerAddress, inputTokenUrl);
-        updateMeta(
+        _initMetaOwner(owner);
+        _updateMeta(address(farmInfo.inputToken), routerAddress, inputTokenUrl);
+        _updateMeta(
             address(_localVars._rewardToken),
             address(0),
             _rewardTokenUrl
@@ -289,15 +290,6 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         emit MaxAllowedDepositUpdated(_maxAllowedDeposit);
     }
 
-    function updateRewardTokenURL(uint256 _rewardTokenIndex, string memory _url)
-        external
-        onlyOwner
-    {
-        RewardInfo storage rewardInfo = rewardPool[_rewardTokenIndex];
-        updateMetaURL(address(rewardInfo.rewardToken), _url);
-        emit RewardTokenURLUpdated(_url, _rewardTokenIndex);
-    }
-
     function updateWithdrawalFee(uint16 _withdrawalFee, bool _massUpdate)
         external
         onlyOwner
@@ -393,7 +385,7 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
             _amount
         );
 
-        updateMeta(address(_rewardToken), address(0), _tokenUrl);
+        _updateMeta(address(_rewardToken), address(0), _tokenUrl);
         _updateRewardPerSecond();
         emit RewardTokenAdded(_rewardToken);
     }

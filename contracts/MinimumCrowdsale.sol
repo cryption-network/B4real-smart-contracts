@@ -72,8 +72,6 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
     /// @notice event emitted when the owner updates max token allocation per user
     event MaxAllocationUpdated(uint256 indexed newAllocation);
 
-    event URLUpdated(address _tokenAddress, string _tokenUrl);
-
     event TokenRateUpdated(address inputToken, uint256 rate);
 
     event CrowdsaleTokensAllocationUpdated(
@@ -128,12 +126,13 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
             crowdsaleTokenAllocated
         );
 
-        updateMeta(address(token), address(0), tokenURL);
+        _initMetaOwner(owner);
+        _updateMeta(address(token), address(0), tokenURL);
         for (uint256 i = 0; i < inputTokens.length; i++) {
             inputToken.push(inputTokens[i]);
             validInputToken[address(inputTokens[i])] = true;
             inputTokenRate[address(inputTokens[i])] = _rate[i];
-            updateMeta(address(inputTokens[i]), address(0), "");
+            _updateMeta(address(inputTokens[i]), address(0), "");
         }
 
         initialized = true;
@@ -196,14 +195,6 @@ contract MinimalCrowdsale is ReentrancyGuard, Ownable, Metadata {
             _inputToken,
             crowdsaleTokenAllocated
         );
-    }
-
-    function updateTokenURL(address _tokenAddress, string memory _url)
-        external
-        onlyOwner
-    {
-        updateMetaURL(_tokenAddress, _url);
-        emit URLUpdated(_tokenAddress, _url);
     }
 
     function updateInputTokenRate(address _inputToken, uint256 _rate)
