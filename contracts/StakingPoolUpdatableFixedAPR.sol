@@ -590,6 +590,11 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         uint256 totalRewardPools = rewardPool.length;
         for (uint256 i = 0; i < totalRewardPools; i++) {
             user.rewardDebt[rewardPool[i].rewardToken] = 0;
+            totalLockedUpRewards[
+                rewardPool[i].rewardToken
+            ] = totalLockedUpRewards[rewardPool[i].rewardToken].sub(
+                user.rewardLockedUp[rewardPool[i].rewardToken]
+            );
             user.rewardLockedUp[rewardPool[i].rewardToken] = 0;
         }
         _updateRewardPerSecond();
