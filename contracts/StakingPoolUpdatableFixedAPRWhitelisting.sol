@@ -79,9 +79,6 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
 
     uint256 public maxAllowedDeposit;
 
-    // if target APR is 20%, then expectedAPR =  ( 20 / 100 ) * e18. Percentage APR is scaled up by e18.
-    uint256 public expedtedAPR;
-
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 amount);
