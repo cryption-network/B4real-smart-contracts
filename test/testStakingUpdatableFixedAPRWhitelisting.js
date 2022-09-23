@@ -5,7 +5,7 @@ chai.use(chaiAsPromised);
 
 var assert = chai.assert;
 const { expect } = require("chai");
-const { MerkleTree } = require('merkletreejs'); 
+const { MerkleTree } = require('merkletreejs');
 const keccak256 = require('keccak256');
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
@@ -132,24 +132,24 @@ describe("StakingPoolUpdatableFixedAPRWhitelisting", function async() {
 
     encodedData = web3.eth.abi.encodeParameters(
       [
-        'address', 'address',
-        'uint256', 'uint256',
+        'address', 'uint256',
+        'address', 'uint256',
         'uint256', 'uint256',
         'uint256', 'address',
         'uint16', 'address',
         'string', 'string',
         'address', 'uint256',
-        'bytes32'
+        'bytes32', 'uint256'
       ],
       [
-        initParams.rewardToken, initParams.lpToken,
-        initParams.startBlock, initParams.endBlock,
-        initParams.amount, expectedAPR,
+        initParams.rewardToken, initParams.amount,
+        initParams.lpToken, initParams.startBlock,
+        initParams.endBlock, expectedAPR,
         initParams.harvestInterval, '0xb60B993862673A87C16E4e6e5F75397131EEBb3e',
         initParams.withdrawalFeeBP, owner.address,
         "https://ipfs.infura.io/ipfs/QmTfuFKToyzLCJWd3wgX9CeewdWsosY9H4B2CUHftp76kc", "https://ipfs.infura.io/ipfs/QmTfuFKToyzLCJWd3wgX9CeewdWsosY9H4B2CUHftp76kc",
         routerAddress, initParams.endBlockDuration,
-        merkleTree.getHexRoot()
+        merkleTree.getHexRoot(), initParams.maxAllowedDeposit
       ]
     );
 
@@ -177,45 +177,28 @@ describe("StakingPoolUpdatableFixedAPRWhitelisting", function async() {
     const blockBefore = await ethers.provider.getBlock(currentBlockNumber);
     const beforeDepositTimestamp = blockBefore.timestamp;
 
-    console.log('before deposit timestamp ',await getCurrentTimestamp());
+    console.log('before deposit timestamp ', await getCurrentTimestamp());
+    console.log('before deposit ', r = await rewardToken1Instance.balanceOf(
+      whitelistedDepositor1.address
+    ));
     await stakingPoolInstance.connect(whitelistedDepositor1).deposit(depositAmount, whitelistedDepositor1Proof);
-    
+
     await setBlockTimestamp(Number(endTimestamp));
-    console.log('endTimestamp ', endTimestamp);
-    console.log('before withdraw timestamp ', await getCurrentTimestamp());
+    console.log('contract reward balance ', await rewardToken1Instance.balanceOf(whitelistedDepositor1.address));
     await stakingPoolInstance.connect(whitelistedDepositor1).withdraw(depositAmount);
 
     const balanceOfDepositor = await rewardToken1Instance.balanceOf(
       whitelistedDepositor1.address
     );
 
-    const rewardAmount = "3488077076";
+    const rewardAmount = "3488077118";
     console.log('beforeDepositTimestamp ', beforeDepositTimestamp);
     const calculatedAPR = calculateYearlyRewards(Number(endTimestamp) + 1, Number(beforeDepositTimestamp) + 1, rewardAmount);
 
     console.log('calculated APR ', calculatedAPR);
 
-    console.log('balanceOfDepositor ', balanceOfDepositor.toString());
+    console.log('after withdrawal balanceOfDepositor ', balanceOfDepositor.toString());
     expect(balanceOfDepositor.toString()).to.equal(rewardAmount);
-  });
-
-  it("should sucessfully immediately withdraw reward", async function () {
-    await lpTokenInstance
-      .connect(whitelistedDepositor1)
-      .approve(stakingPoolInstance.address, depositAmount);
-
-    await stakingPoolInstance.connect(whitelistedDepositor1).deposit(depositAmount, whitelistedDepositor1Proof);
-    await setBlockTimestamp(Number(endTimestamp) - 1);
-
-    console.log('endTimestamp ', endTimestamp);
-    await stakingPoolInstance.connect(whitelistedDepositor1).withdraw(depositAmount);
-
-    const balanceOfDepositor = await rewardToken1Instance.balanceOf(
-      whitelistedDepositor1.address
-    );
-
-    console.log('balanceOfDepositor ', balanceOfDepositor.toString());
-    expect(balanceOfDepositor.toString()).to.equal("3488077076");
   });
 
   it("should sucessfully withdraw reward when 2 users deposit", async function () {
@@ -258,7 +241,7 @@ describe("StakingPoolUpdatableFixedAPRWhitelisting", function async() {
       whitelistedDepositor2.address
     );
 
-    const rewardAmount = "3488077089";
+    const rewardAmount = "3488077118";
 
     const calculatedAPR = calculateYearlyRewards(beforeDepositTimestamp + 1, afterWithdrawalTimestampDepositor1, rewardAmount);
 
@@ -267,7 +250,7 @@ describe("StakingPoolUpdatableFixedAPRWhitelisting", function async() {
     console.log('balanceOfDepositor 1 ', balanceOfDepositor.toString());
     console.log('balanceOfDepositor 2 ', balanceOfDepositor2.toString());
     expect(balanceOfDepositor.toString()).to.equal(rewardAmount);
-    expect(balanceOfDepositor2.toString()).to.equal("1545852347");
+    expect(balanceOfDepositor2.toString()).to.equal("1545852360");
   });
 
   it("should sucessfully withdraw reward when 2 users deposit after increasing APR", async function () {
@@ -275,28 +258,28 @@ describe("StakingPoolUpdatableFixedAPRWhitelisting", function async() {
     const endTimestamp = startTimestamp + 300;
     encodedData = web3.eth.abi.encodeParameters(
       [
-        'address', 'address',
-        'uint256', 'uint256',
+        'address', 'uint256', 
+        'address', 'uint256',
         'uint256', 'uint256',
         'uint256', 'address',
         'uint16', 'address',
         'string', 'string',
         'address', 'uint256',
-        'uint256',
+        'bytes32', 'uint256',
       ],
       [
-        initParams.rewardToken, initParams.lpToken,
-        startTimestamp, endTimestamp,
-        initParams.amount, expectedAPR,
+        initParams.rewardToken, initParams.amount, 
+        initParams.lpToken, startTimestamp,
+        endTimestamp, expectedAPR,
         initParams.harvestInterval, '0xb60B993862673A87C16E4e6e5F75397131EEBb3e',
         initParams.withdrawalFeeBP, owner.address,
         "https://ipfs.infura.io/ipfs/QmTfuFKToyzLCJWd3wgX9CeewdWsosY9H4B2CUHftp76kc", "https://ipfs.infura.io/ipfs/QmTfuFKToyzLCJWd3wgX9CeewdWsosY9H4B2CUHftp76kc",
         routerAddress, endTimestamp,
-        initParams.maxAllowedDeposit,
+        merkleTree.getHexRoot(), initParams.maxAllowedDeposit,
       ]
     );
 
-    const StakingPoolAPRContract = await ethers.getContractFactory('StakingPoolUpdatableFixedAPR');
+    const StakingPoolAPRContract = await ethers.getContractFactory('StakingPoolUpdatableFixedAPRWhitelisting');
 
     let stakingPoolUpdateableAPRInstance = await StakingPoolAPRContract.connect(owner).deploy();
 
@@ -315,9 +298,13 @@ describe("StakingPoolUpdatableFixedAPRWhitelisting", function async() {
     let currentBlockNumber = await ethers.provider.getBlockNumber();
     const blockBefore = await ethers.provider.getBlock(currentBlockNumber);
     const beforeDepositTimestamp = blockBefore.timestamp;
-    await stakingPoolUpdateableAPRInstance.connect(whitelistedDepositor1).deposit(depositAmount);
 
-    await stakingPoolUpdateableAPRInstance.connect(whitelistedDepositor2).deposit(depositAmount);
+    // whitelistedDepositor1Proof = merkleTree.getHexProof(hashToken(whitelistedDepositor1.address));
+    // whitelistedDepositor2Proof = merkleTree.getHexProof(hashToken(whitelistedDepositor2.address));
+
+    await stakingPoolUpdateableAPRInstance.connect(whitelistedDepositor1).deposit(depositAmount, whitelistedDepositor1Proof);
+
+    await stakingPoolUpdateableAPRInstance.connect(whitelistedDepositor2).deposit(depositAmount, whitelistedDepositor2Proof);
 
     await setBlockTimestamp(Number(endTimestamp) - 100);
 
@@ -338,12 +325,12 @@ describe("StakingPoolUpdatableFixedAPRWhitelisting", function async() {
       whitelistedDepositor2.address
     );
 
-    const rewardAmount = "15458523502";
+    const rewardAmount = "15458523592";
 
     console.log('balanceOfDepositor 1 ', balanceOfDepositor.toString());
     console.log('balanceOfDepositor 2 ', balanceOfDepositor2.toString());
     expect(balanceOfDepositor.toString()).to.equal(rewardAmount);
-    expect(balanceOfDepositor2.toString()).to.equal("15458523502");
+    expect(balanceOfDepositor2.toString()).to.equal("15458523593");
 
     const newAPR = BigNumber.from((30 / 100 * 1e18).toString()); // 30%
     await stakingPoolUpdateableAPRInstance.connect(owner).updateExpectedAPR(newAPR, 0);
@@ -354,8 +341,8 @@ describe("StakingPoolUpdatableFixedAPRWhitelisting", function async() {
     await lpTokenInstance
       .connect(whitelistedDepositor2)
       .approve(stakingPoolUpdateableAPRInstance.address, depositAmount);
-    await stakingPoolUpdateableAPRInstance.connect(whitelistedDepositor1).deposit(depositAmount);
-    await stakingPoolUpdateableAPRInstance.connect(whitelistedDepositor2).deposit(depositAmount / 2);
+    await stakingPoolUpdateableAPRInstance.connect(whitelistedDepositor1).deposit(depositAmount, whitelistedDepositor1Proof);
+    await stakingPoolUpdateableAPRInstance.connect(whitelistedDepositor2).deposit(depositAmount / 2, whitelistedDepositor2Proof);
 
     await setBlockTimestamp(Number(endTimestamp));
     await stakingPoolUpdateableAPRInstance.connect(whitelistedDepositor1).withdraw(depositAmount);
@@ -365,8 +352,8 @@ describe("StakingPoolUpdatableFixedAPRWhitelisting", function async() {
 
     const depositor2Withdrawal = await rewardToken1Instance.balanceOf(whitelistedDepositor2.address);
 
-    expect(depositor1Withdrawal.toString()).to.equal("24400684783");
-    expect(depositor2Withdrawal.toString()).to.equal("19882039455");
+    expect(depositor1Withdrawal.toString()).to.equal("24400684931");
+    expect(depositor2Withdrawal.toString()).to.equal("19882039575");
   });
 
 });

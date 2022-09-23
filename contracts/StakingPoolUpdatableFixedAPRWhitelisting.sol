@@ -3,14 +3,12 @@
 // File contracts/StakingPool.sol
 pragma solidity 0.7.6;
 
-import "./library/IPolydexPair.sol";
 import "./library/TransferHelper.sol";
 import "./library/Ownable.sol";
 import "./Metadata.sol";
 import "./MerkleWhitelisting.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./IERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -22,7 +20,7 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
 {
     using SafeMath for uint256;
     using SafeMath for uint16;
-    using SafeERC20 for IERC20;
+    using Address for address;
 
     /// @notice information stuct on each user than stakes LP tokens.
     struct UserInfo {
@@ -41,6 +39,8 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         uint256 lastRewardBlockTimestamp; // Last block timestamp that rewards distribution occurs.
         uint256 blockRewardPerSec;
         IERC20 rewardToken; // Address of reward token contract.
+        // if target APR is 20%, then expectedAPR =  ( 20 / 100 ) * 1e18. Percentage APR is scaled up by e18.
+        uint256 expectedAPR; // Address of reward token contract.
     }
 
     /// @notice all the settings for this farm in one struct
@@ -116,20 +116,21 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         // Decoding is done in two parts due to stack too deep issue.
         (
             _localVars._rewardToken,
+            _localVars._amount,
             farmInfo.inputToken,
             _localVars._startTimestamp,
-            _localVars._endTimestamp,
-            _localVars._amount
-        ) = abi.decode(extraData, (IERC20, IERC20, uint256, uint256, uint256));
+            _localVars._endTimestamp
+        ) = abi.decode(extraData, (IERC20, uint256, IERC20, uint256, uint256));
 
         string memory _rewardTokenUrl;
+        uint256 expectedAPR;
         (
             ,
             ,
             ,
             ,
             ,
-            expedtedAPR,
+            expectedAPR,
             farmInfo.harvestInterval,
             feeAddress,
             farmInfo.withdrawalFeeBP,
@@ -167,7 +168,8 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
             inputTokenUrl,
             routerAddress,
             farmInfo.endTimestamp,
-            root
+            root,
+            maxAllowedDeposit
         ) = abi.decode(
             extraData,
             (
@@ -185,7 +187,8 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
                 string,
                 address,
                 uint256,
-                bytes32
+                bytes32,
+                uint256
             )
         );
 
@@ -212,10 +215,10 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
             address(this),
             _localVars._amount
         );
-        // require(
-        //     farmInfo.endTimestamp >= block.timestamp,
-        //     "End block timestamp must be greater than current timestamp"
-        // );
+        require(
+            farmInfo.endTimestamp >= block.timestamp,
+            "End block timestamp must be greater than current timestamp"
+        );
         require(
             farmInfo.endTimestamp > _localVars._startTimestamp,
             "Invalid start timestamp"
@@ -239,7 +242,8 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
                     ? block.timestamp
                     : _localVars._startTimestamp,
                 blockRewardPerSec: 0,
-                accRewardPerShare: 0
+                accRewardPerShare: 0,
+                expectedAPR: expectedAPR
             })
         );
 
@@ -254,32 +258,6 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
      */
     function updateMerkleRoot(bytes32 _root) external onlyOwner {
         root = _root;
-    }
-
-    /**
-     * @notice Gets the reward multiplier over the given _fromTimestamp until _toTimestamp
-     * @param _fromTimestamp the start of the period to measure rewards for
-     * @param _rewardInfoIndex RewardPool Id number
-     * @param _toTimestamp the end of the period to measure rewards for
-     * @return The weighted multiplier for the given period
-     */
-    function getMultiplier(
-        uint256 _fromTimestamp,
-        uint256 _rewardInfoIndex,
-        uint256 _toTimestamp
-    ) public view returns (uint256) {
-        RewardInfo memory rewardInfo = rewardPool[_rewardInfoIndex];
-        uint256 _from = _fromTimestamp >= rewardInfo.startTimestamp
-            ? _fromTimestamp
-            : rewardInfo.startTimestamp;
-        uint256 to = rewardInfo.endTimestamp > _toTimestamp
-            ? _toTimestamp
-            : rewardInfo.endTimestamp;
-        if (_from > to) {
-            return 0;
-        }
-
-        return to.sub(_from, "from getMultiplier");
     }
 
     function updateMaxAllowedDeposit(uint256 _maxAllowedDeposit)
@@ -339,7 +317,8 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         uint256 _lastRewardTimestamp,
         uint256 _amount,
         string memory _tokenUrl,
-        bool _massUpdate
+        bool _massUpdate,
+        uint256 expectedAPR
     ) external onlyOwner nonReentrant {
         require(
             farmInfo.endTimestamp > _startTimestamp,
@@ -372,7 +351,8 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
                 rewardToken: _rewardToken,
                 lastRewardBlockTimestamp: _lastRewardTimestamp,
                 blockRewardPerSec: 0,
-                accRewardPerShare: 0
+                accRewardPerShare: 0,
+                expectedAPR: expectedAPR
             })
         );
 
@@ -394,21 +374,6 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         uint256 totalRewardPool = rewardPool.length;
         for (uint256 i = 0; i < totalRewardPool; i++) {
             updatePool(i);
-        }
-    }
-
-    function _updateRewardPerSecond() internal {
-        /* 
-            APR = ( SECONDS_IN_YEAR * RewardPerSecond * 100 ) / Total deposited
-            RewardPerSecond = ( APR * Total deposited ) / ( SECONDS_IN_YEAR )
-        */
-        uint256 totalRewardPools = rewardPool.length;
-        for (uint256 i = 0; i < totalRewardPools; i++) {
-            RewardInfo storage rewardInfo = rewardPool[i];
-            uint256 effectiveRewardPerSecond = (
-                expedtedAPR.mul(totalInputTokensStaked)
-            ).div(SECONDS_IN_YEAR * 1e18);
-            rewardInfo.blockRewardPerSec = effectiveRewardPerSecond;
         }
     }
 
@@ -449,47 +414,10 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         return pending.add(user.rewardLockedUp[rewardInfo.rewardToken]);
     }
 
-    // View function to see if user can harvest tokens.
-    function canHarvest(address _user) public view returns (bool) {
-        UserInfo storage user = userInfo[_user];
-        return ((block.timestamp >= user.nextHarvestUntil));
-    }
-
     // View function to see if user harvest until time.
     function getHarvestUntil(address _user) external view returns (uint256) {
         UserInfo storage user = userInfo[_user];
         return user.nextHarvestUntil;
-    }
-
-    /**
-     * @notice updates pool information to be up to date to the current block timestamp
-     */
-    function updatePool(uint256 _rewardInfoIndex) public {
-        RewardInfo storage rewardInfo = rewardPool[_rewardInfoIndex];
-        if (block.timestamp <= rewardInfo.lastRewardBlockTimestamp) {
-            return;
-        }
-        uint256 lpSupply = totalInputTokensStaked;
-
-        if (lpSupply == 0) {
-            rewardInfo.lastRewardBlockTimestamp = block.timestamp;
-            return;
-        }
-        uint256 multiplier = getMultiplier(
-            rewardInfo.lastRewardBlockTimestamp,
-            _rewardInfoIndex,
-            block.timestamp
-        );
-        uint256 tokenReward = multiplier.mul(rewardInfo.blockRewardPerSec);
-        rewardInfo.accRewardPerShare = rewardInfo.accRewardPerShare.add(
-            tokenReward.mul(1e18).div(lpSupply)
-        );
-        rewardInfo.lastRewardBlockTimestamp = block.timestamp <
-            rewardInfo.endTimestamp
-            ? block.timestamp
-            : rewardInfo.endTimestamp;
-
-        emit RewardPoolUpdated(_rewardInfoIndex);
     }
 
     function deposit(uint256 _amount, bytes32[] memory _proof)
@@ -515,15 +443,19 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
     ) internal {
         // merkle verification of whether account is whitelisted or not.
         require(_verify(_leaf, _proof), "Account not whitelisted");
+        require(
+            totalInputTokensStaked.add(_amount) <= maxAllowedDeposit,
+            "Max allowed deposit exceeded"
+        );
 
         UserInfo storage user = userInfo[_user];
-        user.whiteListedHandlers[_user] = true;
         payOrLockupPendingReward(_user, _user);
         if (user.amount == 0 && _amount > 0) {
             farmInfo.numFarmers++;
         }
         if (_amount > 0) {
-            farmInfo.inputToken.safeTransferFrom(
+            TransferHelper.safeTransferFrom(
+                address(farmInfo.inputToken),
                 address(msg.sender),
                 address(this),
                 _amount
@@ -553,39 +485,6 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         _withdraw(_amount, _user, msg.sender);
     }
 
-    function _withdraw(
-        uint256 _amount,
-        address _user,
-        address _withdrawer
-    ) internal {
-        UserInfo storage user = userInfo[_user];
-        require(user.amount >= _amount, "INSUFFICIENT");
-        payOrLockupPendingReward(_user, _withdrawer);
-        if (user.amount == _amount && _amount > 0) {
-            farmInfo.numFarmers--;
-        }
-
-        if (_amount > 0) {
-            user.amount = user.amount.sub(_amount);
-            if (farmInfo.withdrawalFeeBP > 0) {
-                uint256 withdrawalFee = _amount
-                    .mul(farmInfo.withdrawalFeeBP)
-                    .div(10000);
-                farmInfo.inputToken.safeTransfer(feeAddress, withdrawalFee);
-                farmInfo.inputToken.safeTransfer(
-                    address(_withdrawer),
-                    _amount.sub(withdrawalFee)
-                );
-            } else {
-                farmInfo.inputToken.safeTransfer(address(_withdrawer), _amount);
-            }
-        }
-        totalInputTokensStaked = totalInputTokensStaked.sub(_amount);
-        updateRewardDebt(_user);
-        _updateRewardPerSecond();
-        emit Withdraw(_user, _amount);
-    }
-
     /**
      * @notice emergency function to withdraw LP tokens and forego harvest rewards. Important to protect users LP tokens
      */
@@ -601,9 +500,19 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         uint256 totalRewardPools = rewardPool.length;
         for (uint256 i = 0; i < totalRewardPools; i++) {
             user.rewardDebt[rewardPool[i].rewardToken] = 0;
+            totalLockedUpRewards[
+                rewardPool[i].rewardToken
+            ] = totalLockedUpRewards[rewardPool[i].rewardToken].sub(
+                user.rewardLockedUp[rewardPool[i].rewardToken]
+            );
+            user.rewardLockedUp[rewardPool[i].rewardToken] = 0;
         }
         _updateRewardPerSecond();
-        farmInfo.inputToken.safeTransfer(address(msg.sender), user.amount);
+        TransferHelper.safeTransfer(
+            address(farmInfo.inputToken),
+            address(msg.sender),
+            user.amount
+        );
         emit EmergencyWithdraw(msg.sender, user.amount);
     }
 
@@ -626,6 +535,110 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
     {
         UserInfo storage user = userInfo[_owner];
         return user.whiteListedHandlers[_user];
+    }
+
+    // Update fee address by the previous fee address.
+    function setFeeAddress(address _feeAddress) external onlyOwner {
+        require(_feeAddress != address(0), "setFeeAddress: invalid address");
+        feeAddress = _feeAddress;
+        emit FeeAddressChanged(feeAddress);
+    }
+
+    function transferRewardToken(uint256 _rewardTokenIndex, uint256 _amount)
+        external
+        onlyOwner
+    {
+        RewardInfo storage rewardInfo = rewardPool[_rewardTokenIndex];
+
+        TransferHelper.safeTransfer(
+            address(rewardInfo.rewardToken),
+            msg.sender,
+            _amount
+        );
+    }
+
+    function updateExpectedAPR(uint256 _expectedAPR, uint256 _rewardTokenIndex)
+        external
+        onlyOwner
+    {
+        massUpdatePools();
+        RewardInfo storage reward = rewardPool[_rewardTokenIndex];
+        reward.expectedAPR = _expectedAPR;
+        _updateRewardPerSecond();
+        emit ExpectedAprUpdated(_expectedAPR, _rewardTokenIndex);
+    }
+
+    function _withdraw(
+        uint256 _amount,
+        address _user,
+        address _withdrawer
+    ) internal {
+        UserInfo storage user = userInfo[_user];
+        require(user.amount >= _amount, "INSUFFICIENT");
+        payOrLockupPendingReward(_user, _withdrawer);
+        if (_amount > 0) {
+            if (user.amount == _amount) {
+                farmInfo.numFarmers--;
+            }
+
+            user.amount = user.amount.sub(_amount);
+            if (farmInfo.withdrawalFeeBP > 0) {
+                uint256 withdrawalFee = _amount
+                    .mul(farmInfo.withdrawalFeeBP)
+                    .div(10000);
+                TransferHelper.safeTransfer(
+                    address(farmInfo.inputToken),
+                    feeAddress,
+                    withdrawalFee
+                );
+                TransferHelper.safeTransfer(
+                    address(farmInfo.inputToken),
+                    address(_withdrawer),
+                    _amount.sub(withdrawalFee)
+                );
+            } else {
+                TransferHelper.safeTransfer(
+                    address(farmInfo.inputToken),
+                    address(_withdrawer),
+                    _amount
+                );
+            }
+        }
+        totalInputTokensStaked = totalInputTokensStaked.sub(_amount);
+        updateRewardDebt(_user);
+        _updateRewardPerSecond();
+        emit Withdraw(_user, _amount);
+    }
+
+    /**
+     * @notice updates pool information to be up to date to the current block timestamp
+     */
+    function updatePool(uint256 _rewardInfoIndex) public {
+        RewardInfo storage rewardInfo = rewardPool[_rewardInfoIndex];
+        if (block.timestamp <= rewardInfo.lastRewardBlockTimestamp) {
+            return;
+        }
+        uint256 lpSupply = totalInputTokensStaked;
+
+        if (lpSupply == 0) {
+            rewardInfo.lastRewardBlockTimestamp = block.timestamp;
+            return;
+        }
+        uint256 multiplier = getMultiplier(
+            rewardInfo.lastRewardBlockTimestamp,
+            _rewardInfoIndex,
+            block.timestamp
+        );
+        uint256 tokenReward = multiplier.mul(rewardInfo.blockRewardPerSec);
+        rewardInfo.accRewardPerShare = rewardInfo.accRewardPerShare.add(
+            tokenReward.div(lpSupply)
+        );
+        rewardInfo.lastRewardBlockTimestamp = block.timestamp <
+            rewardInfo.endTimestamp
+            ? block.timestamp
+            : rewardInfo.endTimestamp;
+
+        emit RewardPoolUpdated(_rewardInfoIndex);
     }
 
     function payOrLockupPendingReward(address _user, address _withdrawer)
@@ -655,7 +668,6 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
                 .mul(rewardInfo.accRewardPerShare)
                 .div(1e18)
                 .sub(userRewardDebt);
-
             if (canUserHarvest) {
                 if (pending > 0 || userRewardLockedUp > 0) {
                     uint256 totalRewards = pending.add(userRewardLockedUp);
@@ -701,34 +713,25 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         }
     }
 
-    // Update fee address by the previous fee address.
-    function setFeeAddress(address _feeAddress) external onlyOwner {
-        require(_feeAddress != address(0), "setFeeAddress: invalid address");
-        feeAddress = _feeAddress;
-        emit FeeAddressChanged(feeAddress);
-    }
-
-    function updateExpectedAPR(uint256 _expectedAPR, uint256 _rewardTokenIndex)
-        external
-        onlyOwner
-    {
-        massUpdatePools();
-        expedtedAPR = _expectedAPR;
-        _updateRewardPerSecond();
-        emit ExpectedAprUpdated(_expectedAPR, _rewardTokenIndex);
-    }
-
-    function transferRewardToken(uint256 _rewardTokenIndex, uint256 _amount)
-        external
-        onlyOwner
-    {
-        RewardInfo storage rewardInfo = rewardPool[_rewardTokenIndex];
-
-        TransferHelper.safeTransfer(
-            address(rewardInfo.rewardToken),
-            msg.sender,
-            _amount
-        );
+    function _updateRewardPerSecond() internal {
+        /* 
+            APR = ( SECONDS_IN_YEAR * RewardPerSecond * 100 ) / Total deposited
+            RewardPerSecond = ( APR * Total deposited ) / ( SECONDS_IN_YEAR )
+        */
+        uint256 totalRewardPools = rewardPool.length;
+        uint256 inputTokenDecimals = farmInfo.inputToken.decimals();
+        for (uint256 i = 0; i < totalRewardPools; i++) {
+            RewardInfo storage rewardInfo = rewardPool[i];
+            uint256 rewardTokenDecimals = rewardInfo.rewardToken.decimals();
+            uint256 expectedAPR = rewardInfo.expectedAPR;
+            uint256 effectiveRewardPerSecond = (
+                expectedAPR
+                    .mul(totalInputTokensStaked)
+                    .mul(10**rewardTokenDecimals)
+                    .mul(1e18)
+            ).div((10**inputTokenDecimals).mul(SECONDS_IN_YEAR * 1e18));
+            rewardInfo.blockRewardPerSec = effectiveRewardPerSecond;
+        }
     }
 
     /**
@@ -741,11 +744,42 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         uint256 _amount,
         IERC20 _rewardToken
     ) private {
-        uint256 rewardBal = _rewardToken.balanceOf(address(this));
-        if (_amount > rewardBal) {
-            TransferHelper.safeTransfer(address(_rewardToken), _to, rewardBal);
-        } else {
-            TransferHelper.safeTransfer(address(_rewardToken), _to, _amount);
+        require(
+            _rewardToken.balanceOf(address(this)) >= _amount,
+            "Insufficient reward token balance"
+        );
+        TransferHelper.safeTransfer(address(_rewardToken), _to, _amount);
+    }
+
+    // View function to see if user can harvest tokens.
+    function canHarvest(address _user) public view returns (bool) {
+        UserInfo storage user = userInfo[_user];
+        return ((block.timestamp >= user.nextHarvestUntil));
+    }
+
+    /**
+     * @notice Gets the reward multiplier over the given _fromTimestamp until _toTimestamp
+     * @param _fromTimestamp the start of the period to measure rewards for
+     * @param _rewardInfoIndex RewardPool Id number
+     * @param _toTimestamp the end of the period to measure rewards for
+     * @return The weighted multiplier for the given period
+     */
+    function getMultiplier(
+        uint256 _fromTimestamp,
+        uint256 _rewardInfoIndex,
+        uint256 _toTimestamp
+    ) public view returns (uint256) {
+        RewardInfo memory rewardInfo = rewardPool[_rewardInfoIndex];
+        uint256 _from = _fromTimestamp >= rewardInfo.startTimestamp
+            ? _fromTimestamp
+            : rewardInfo.startTimestamp;
+        uint256 to = rewardInfo.endTimestamp > _toTimestamp
+            ? _toTimestamp
+            : rewardInfo.endTimestamp;
+        if (_from > to) {
+            return 0;
         }
+
+        return to.sub(_from, "from getMultiplier");
     }
 }
