@@ -21,6 +21,7 @@ async function getCurrentTimestamp() {
 
 describe("StakingPoolUpdatableFixedAPR", function async() {
   const depositAmount = BigNumber.from("10000000000000000");
+  const maxAllowedDeposit = parseEther("200");
 
   function calculateYearlyRewards(withdrawalTime, depositTime, rewardAmount) {
     const diffTime = depositTime - withdrawalTime;
@@ -118,22 +119,25 @@ describe("StakingPoolUpdatableFixedAPR", function async() {
 
     encodedData = web3.eth.abi.encodeParameters(
       [
-        'address', 'address',
-        'uint256', 'uint256',
+        'address', 'uint256',
+        'address', 'uint256',
         'uint256', 'uint256',
         'uint256', 'address',
         'uint16', 'address',
         'string', 'string',
         'address', 'uint256',
+        'uint256',
       ],
       [
-        initParams.rewardToken, initParams.lpToken,
+        initParams.rewardToken, initParams.amount,
+        initParams.lpToken,
         initParams.startBlock, initParams.endBlock,
-        initParams.amount, expectedAPR,
+        expectedAPR,
         initParams.harvestInterval, '0xb60B993862673A87C16E4e6e5F75397131EEBb3e',
         initParams.withdrawalFeeBP, owner.address,
         "https://ipfs.infura.io/ipfs/QmTfuFKToyzLCJWd3wgX9CeewdWsosY9H4B2CUHftp76kc", "https://ipfs.infura.io/ipfs/QmTfuFKToyzLCJWd3wgX9CeewdWsosY9H4B2CUHftp76kc",
-        routerAddress, initParams.endBlockDuration
+        routerAddress, initParams.endBlockDuration,
+        maxAllowedDeposit
       ]
     );
     const StakingPoolAPRContract = await ethers.getContractFactory('StakingPoolUpdatableFixedAPR');
@@ -155,9 +159,9 @@ describe("StakingPoolUpdatableFixedAPR", function async() {
     const blockBefore = await ethers.provider.getBlock(currentBlockNumber);
     const beforeDepositTimestamp = blockBefore.timestamp;
 
-    console.log('before deposit timestamp ',await getCurrentTimestamp());
+    console.log('before deposit timestamp ', await getCurrentTimestamp());
     await stakingPoolInstance.connect(depositor1).deposit(depositAmount);
-    
+
     await setBlockTimestamp(Number(endTimestamp));
     console.log('endTimestamp ', endTimestamp);
     console.log('before withdraw timestamp ', await getCurrentTimestamp());
@@ -167,7 +171,7 @@ describe("StakingPoolUpdatableFixedAPR", function async() {
       depositor1.address
     );
 
-    const rewardAmount = "3488077076";
+    const rewardAmount = "3488077118";
     console.log('beforeDepositTimestamp ', beforeDepositTimestamp);
     const calculatedAPR = calculateYearlyRewards(Number(endTimestamp) + 1, Number(beforeDepositTimestamp) + 1, rewardAmount);
 
@@ -193,7 +197,7 @@ describe("StakingPoolUpdatableFixedAPR", function async() {
     );
 
     console.log('balanceOfDepositor ', balanceOfDepositor.toString());
-    expect(balanceOfDepositor.toString()).to.equal("3488077076");
+    expect(balanceOfDepositor.toString()).to.equal("3488077118");
   });
 
   it("should sucessfully withdraw reward when 2 users deposit", async function () {
@@ -236,7 +240,7 @@ describe("StakingPoolUpdatableFixedAPR", function async() {
       depositor2.address
     );
 
-    const rewardAmount = "3488077089";
+    const rewardAmount = "3488077118";
 
     const calculatedAPR = calculateYearlyRewards(beforeDepositTimestamp + 1, afterWithdrawalTimestampDepositor1, rewardAmount);
 
@@ -245,7 +249,7 @@ describe("StakingPoolUpdatableFixedAPR", function async() {
     console.log('balanceOfDepositor 1 ', balanceOfDepositor.toString());
     console.log('balanceOfDepositor 2 ', balanceOfDepositor2.toString());
     expect(balanceOfDepositor.toString()).to.equal(rewardAmount);
-    expect(balanceOfDepositor2.toString()).to.equal("1545852347");
+    expect(balanceOfDepositor2.toString()).to.equal("1545852360");
   });
 
   it("should sucessfully withdraw reward when 2 users deposit after increasing APR", async function () {
@@ -253,8 +257,8 @@ describe("StakingPoolUpdatableFixedAPR", function async() {
     const endTimestamp = startTimestamp + 300;
     encodedData = web3.eth.abi.encodeParameters(
       [
-        'address', 'address',
-        'uint256', 'uint256',
+        'address', 'uint256',
+        'address', 'uint256',
         'uint256', 'uint256',
         'uint256', 'address',
         'uint16', 'address',
@@ -263,9 +267,9 @@ describe("StakingPoolUpdatableFixedAPR", function async() {
         'uint256',
       ],
       [
-        initParams.rewardToken, initParams.lpToken,
-        startTimestamp, endTimestamp,
-        initParams.amount, expectedAPR,
+        initParams.rewardToken, initParams.amount,
+        initParams.lpToken, startTimestamp,
+        endTimestamp, expectedAPR,
         initParams.harvestInterval, '0xb60B993862673A87C16E4e6e5F75397131EEBb3e',
         initParams.withdrawalFeeBP, owner.address,
         "https://ipfs.infura.io/ipfs/QmTfuFKToyzLCJWd3wgX9CeewdWsosY9H4B2CUHftp76kc", "https://ipfs.infura.io/ipfs/QmTfuFKToyzLCJWd3wgX9CeewdWsosY9H4B2CUHftp76kc",
@@ -316,12 +320,12 @@ describe("StakingPoolUpdatableFixedAPR", function async() {
       depositor2.address
     );
 
-    const rewardAmount = "15458523502";
+    const rewardAmount = "15458523592";
 
     console.log('balanceOfDepositor 1 ', balanceOfDepositor.toString());
     console.log('balanceOfDepositor 2 ', balanceOfDepositor2.toString());
     expect(balanceOfDepositor.toString()).to.equal(rewardAmount);
-    expect(balanceOfDepositor2.toString()).to.equal("15458523502");
+    expect(balanceOfDepositor2.toString()).to.equal("15458523593");
 
     const newAPR = BigNumber.from((30 / 100 * 1e18).toString()); // 30%
     await stakingPoolUpdateableAPRInstance.connect(owner).updateExpectedAPR(newAPR, 0);
@@ -343,8 +347,8 @@ describe("StakingPoolUpdatableFixedAPR", function async() {
 
     const depositor2Withdrawal = await rewardToken1Instance.balanceOf(depositor2.address);
 
-    expect(depositor1Withdrawal.toString()).to.equal("24400684783");
-    expect(depositor2Withdrawal.toString()).to.equal("19882039455");
+    expect(depositor1Withdrawal.toString()).to.equal("24400684931");
+    expect(depositor2Withdrawal.toString()).to.equal("19882039575");
   });
 
 });

@@ -33,6 +33,8 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         uint256 lastRewardBlockTimestamp; // Last block timestamp that rewards distribution occurs.
         uint256 blockRewardPerSec;
         IERC20 rewardToken; // Address of reward token contract.
+        // if target APR is 20%, then expectedAPR =  ( 20 / 100 ) * 1e18. Percentage APR is scaled up by e18.
+        uint256 expectedAPR; // Address of reward token contract.
     }
 
     /// @notice all the settings for this farm in one struct
@@ -71,8 +73,6 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
 
     uint256 public maxAllowedDeposit;
 
-    // if target APR is 20%, then expectedAPR =  ( 20 / 100 ) * 1e18. Percentage APR is scaled up by e18.
-    uint256 public expectedAPR;
 
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
@@ -114,6 +114,7 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
             _localVars._endTimestamp
         ) = abi.decode(extraData, (IERC20, uint256, IERC20, uint256, uint256));
 
+        uint256 expectedAPR;
         string memory _rewardTokenUrl;
         (
             ,
@@ -232,7 +233,8 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
                     ? block.timestamp
                     : _localVars._startTimestamp,
                 blockRewardPerSec: 0,
-                accRewardPerShare: 0
+                accRewardPerShare: 0,
+                expectedAPR: expectedAPR
             })
         );
 
@@ -323,7 +325,8 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         uint256 _lastRewardTimestamp,
         uint256 _amount,
         string memory _tokenUrl,
-        bool _massUpdate
+        bool _massUpdate,
+        uint256 expectedAPR
     ) external onlyOwner nonReentrant {
         require(
             farmInfo.endTimestamp > _startTimestamp,
@@ -356,7 +359,8 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
                 rewardToken: _rewardToken,
                 lastRewardBlockTimestamp: _lastRewardTimestamp,
                 blockRewardPerSec: 0,
-                accRewardPerShare: 0
+                accRewardPerShare: 0,
+                expectedAPR: expectedAPR
             })
         );
 
@@ -392,6 +396,7 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         for (uint256 i = 0; i < totalRewardPools; i++) {
             RewardInfo storage rewardInfo = rewardPool[i];
             uint256 rewardTokenDecimals = rewardInfo.rewardToken.decimals();
+            uint256 expectedAPR = rewardInfo.expectedAPR;
             uint256 effectiveRewardPerSecond = (
                 expectedAPR
                     .mul(totalInputTokensStaked)
@@ -496,7 +501,6 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
             "Max allowed deposit exceeded"
         );
         UserInfo storage user = userInfo[_user];
-        user.whiteListedHandlers[_user] = true;
         payOrLockupPendingReward(_user, _user);
         if (user.amount == 0 && _amount > 0) {
             farmInfo.numFarmers++;
@@ -541,11 +545,10 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         UserInfo storage user = userInfo[_user];
         require(user.amount >= _amount, "INSUFFICIENT");
         payOrLockupPendingReward(_user, _withdrawer);
-        if (user.amount == _amount && _amount > 0) {
-            farmInfo.numFarmers--;
-        }
-
         if (_amount > 0) {
+            if (user.amount == _amount) {
+                farmInfo.numFarmers--;
+            }
             user.amount = user.amount.sub(_amount);
             if (farmInfo.withdrawalFeeBP > 0) {
                 uint256 withdrawalFee = _amount
@@ -712,7 +715,8 @@ contract StakingPoolUpdatableFixedAPR is Ownable, ReentrancyGuard, Metadata {
         onlyOwner
     {
         massUpdatePools();
-        expectedAPR = _expectedAPR;
+        RewardInfo storage reward = rewardPool[_rewardTokenIndex];
+        reward.expectedAPR = _expectedAPR;
         _updateRewardPerSecond();
         emit ExpectedAprUpdated(_expectedAPR, _rewardTokenIndex);
     }
