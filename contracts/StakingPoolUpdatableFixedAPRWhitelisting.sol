@@ -409,6 +409,7 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
             farmInfo.numFarmers--;
         }
         totalInputTokensStaked = totalInputTokensStaked.sub(user.amount);
+        uint256 amount = user.amount;
         user.amount = 0;
 
         uint256 totalRewardPools = rewardPool.length;
@@ -425,9 +426,9 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         TransferHelper.safeTransfer(
             address(farmInfo.inputToken),
             address(msg.sender),
-            user.amount
+            amount
         );
-        emit EmergencyWithdraw(msg.sender, user.amount);
+        emit EmergencyWithdraw(msg.sender, amount);
     }
 
     function whitelistHandler(address _handler) external {
