@@ -61,6 +61,7 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
     uint16 public constant MAXIMUM_WITHDRAWAL_FEE_BP = 1000;
 
     uint256 public totalInputTokensStaked;
+    uint256 public exponent = 1e9;
 
     // Total locked up rewards
     mapping(IERC20 => uint256) public totalLockedUpRewards;
@@ -102,11 +103,15 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
 
     LocalVars private _localVars;
 
+    constructor(bytes memory _poolData) {
+        _initPool(_poolData);
+    }
+
     /**
      * @notice initialize the staking pool contract.
      * This is called only once and state is initialized.
      */
-    function init(bytes memory extraData) external {
+    function _initPool(bytes memory extraData) internal {
         require(initialized == false, "Contract already initialized");
 
         // Decoding is done in two parts due to stack too deep issue.
@@ -257,18 +262,17 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         root = _root;
     }
 
-    function updateMaxAllowedDeposit(uint256 _maxAllowedDeposit)
-        external
-        onlyOwner
-    {
+    function updateMaxAllowedDeposit(
+        uint256 _maxAllowedDeposit
+    ) external onlyOwner {
         maxAllowedDeposit = _maxAllowedDeposit;
         emit MaxAllowedDepositUpdated(_maxAllowedDeposit);
     }
 
-    function updateWithdrawalFee(uint16 _withdrawalFee, bool _massUpdate)
-        external
-        onlyOwner
-    {
+    function updateWithdrawalFee(
+        uint16 _withdrawalFee,
+        bool _massUpdate
+    ) external onlyOwner {
         require(
             _withdrawalFee <= MAXIMUM_WITHDRAWAL_FEE_BP,
             "invalid withdrawal fee basis points"
@@ -282,10 +286,10 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         emit WithdrawalFeeChanged(_withdrawalFee);
     }
 
-    function updateHarvestInterval(uint256 _harvestInterval, bool _massUpdate)
-        external
-        onlyOwner
-    {
+    function updateHarvestInterval(
+        uint256 _harvestInterval,
+        bool _massUpdate
+    ) external onlyOwner {
         require(
             _harvestInterval <= MAXIMUM_HARVEST_INTERVAL,
             "invalid harvest intervals"
@@ -367,10 +371,10 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         emit RewardTokenAdded(_rewardToken);
     }
 
-    function deposit(uint256 _amount, bytes32[] memory _proof)
-        external
-        nonReentrant
-    {
+    function deposit(
+        uint256 _amount,
+        bytes32[] memory _proof
+    ) external nonReentrant {
         _deposit(_amount, msg.sender, _calculateLeaf(msg.sender), _proof);
     }
 
@@ -450,10 +454,10 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         emit FeeAddressChanged(feeAddress);
     }
 
-    function updateExpectedAPR(uint256 _expectedAPR, uint256 _rewardTokenIndex)
-        external
-        onlyOwner
-    {
+    function updateExpectedAPR(
+        uint256 _expectedAPR,
+        uint256 _rewardTokenIndex
+    ) external onlyOwner {
         massUpdatePools();
         RewardInfo storage reward = rewardPool[_rewardTokenIndex];
         reward.expectedAPR = _expectedAPR;
@@ -461,10 +465,10 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         emit ExpectedAprUpdated(_expectedAPR, _rewardTokenIndex);
     }
 
-    function transferRewardToken(uint256 _rewardTokenIndex, uint256 _amount)
-        external
-        onlyOwner
-    {
+    function transferRewardToken(
+        uint256 _rewardTokenIndex,
+        uint256 _amount
+    ) external onlyOwner {
         RewardInfo storage rewardInfo = rewardPool[_rewardTokenIndex];
         require(
             rewardInfo.rewardToken.balanceOf(address(this)) >= _amount,
@@ -484,11 +488,10 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
      * @param _rewardInfoIndex reward token's index.
      * @return total amount of withdrawable reward tokens
      */
-    function pendingReward(address _user, uint256 _rewardInfoIndex)
-        external
-        view
-        returns (uint256)
-    {
+    function pendingReward(
+        address _user,
+        uint256 _rewardInfoIndex
+    ) external view returns (uint256) {
         UserInfo storage user = userInfo[_user];
         RewardInfo memory rewardInfo = rewardPool[_rewardInfoIndex];
         uint256 accRewardPerShare = rewardInfo.accRewardPerShare;
@@ -509,17 +512,16 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
             );
         }
 
-        uint256 pending = user.amount.mul(accRewardPerShare).div(1e18).sub(
+        uint256 pending = user.amount.mul(accRewardPerShare).div(exponent).sub(
             user.rewardDebt[rewardInfo.rewardToken]
         );
         return pending.add(user.rewardLockedUp[rewardInfo.rewardToken]);
     }
 
-    function isUserWhiteListed(address _owner, address _user)
-        external
-        view
-        returns (bool)
-    {
+    function isUserWhiteListed(
+        address _owner,
+        address _user
+    ) external view returns (bool) {
         UserInfo storage user = userInfo[_owner];
         return user.whiteListedHandlers[_user];
     }
@@ -615,9 +617,9 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
             uint256 effectiveRewardPerSecond = (
                 expectedAPR
                     .mul(totalInputTokensStaked)
-                    .mul(10**rewardTokenDecimals)
-                    .mul(1e18)
-            ).div((10**inputTokenDecimals).mul(SECONDS_IN_YEAR * 1e18));
+                    .mul(10 ** rewardTokenDecimals)
+                    .mul(exponent)
+            ).div((10 ** inputTokenDecimals).mul(SECONDS_IN_YEAR * 1e18));
             rewardInfo.blockRewardPerSec = effectiveRewardPerSecond;
         }
     }
@@ -695,9 +697,10 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
         emit Withdraw(_user, _amount);
     }
 
-    function payOrLockupPendingReward(address _user, address _withdrawer)
-        internal
-    {
+    function payOrLockupPendingReward(
+        address _user,
+        address _withdrawer
+    ) internal {
         UserInfo storage user = userInfo[_user];
         if (user.nextHarvestUntil == 0) {
             user.nextHarvestUntil = block.timestamp.add(
@@ -720,7 +723,7 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
             uint256 pending = user
                 .amount
                 .mul(rewardInfo.accRewardPerShare)
-                .div(1e18)
+                .div(exponent)
                 .sub(userRewardDebt);
 
             if (canUserHarvest) {
@@ -764,7 +767,7 @@ contract StakingPoolUpdatableFixedAPRWhitelisting is
             user.rewardDebt[rewardInfo.rewardToken] = user
                 .amount
                 .mul(rewardInfo.accRewardPerShare)
-                .div(1e18);
+                .div(exponent);
         }
     }
 
