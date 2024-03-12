@@ -8,7 +8,7 @@ module.exports = {
       url: "http://localhost:8545", // uses account 0 of the hardhat node to deploy
     },
     matic: {
-      url: "https://polygon.llamarpc.com",
+      url: "https://polygon-rpc.com",
       accounts: [`0x${process.env.PRIVATE_KEY}`],
       gasPrice: 200000000000, //30 gwei
     },

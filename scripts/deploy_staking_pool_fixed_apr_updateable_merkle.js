@@ -22,23 +22,36 @@ function hashToken(account) {
 }
 
 async function main() {
+  //All the config values such as harvest interval etc are taken from the existing smart contract.
+
+  const currentBlockNumber = await hre.ethers.provider.getBlockNumber();
+  const block = await hre.ethers.provider.getBlock(currentBlockNumber);
+  startRewardTimestamp = block.timestamp + 1000;
+  endRewardTimestamp = startRewardTimestamp + 25 * 86400 * 365; //25 years added on top of startTimestamp
+
   const initParams = {
+    merkleRoot:
+      "0xce227ade24c76330c347342b8ed8323f4375b0b7948d2bb13fec8cabab4b1cf5",
     rewardToken: "0x6be961cc7f0f182a58D1fa8052C5e92026CBEcAa", //B4Real Credits
-    amount: parseEther("0"),
+    amount: hre.ethers.utils.parseEther("0"), //We are initializing with 0 tokens
     lpToken: "0x3c27564e3161bbaA6E7d2f0320fa4BE77AED54da", //B4Real Token
     startBlock: startRewardTimestamp,
-    endBlock: endTimestamp,
+    endBlock: endRewardTimestamp,
     withdrawalFeeBP: 0,
     harvestInterval: 60,
     maxAllowedDeposit: hre.ethers.constants.MaxUint256,
     owner: "0x240c439011770253A379e4Fcd391761071C06bfb", //One set in the original smart contract
+    expectedAPR: hre.ethers.utils.parseEther("0.25"), // 50% APR
+    feeAddress: "0x240c439011770253A379e4Fcd391761071C06bfb", //One set in the original smart contract
   };
 
   const hashData = [hashToken(initParams.owner)];
 
-  const merkleTree = new MerkleTree(hashData, keccak256, { sortPairs: true });
+  const merkleTree = new MerkleTree(hashData, keccak256, {
+    sortPairs: true,
+  });
 
-  const encodedData = ethers.utils.defaultAbiCoder.encode(
+  const encodedData = hre.ethers.utils.defaultAbiCoder.encode(
     [
       "address",
       "uint256",
@@ -54,25 +67,26 @@ async function main() {
       "string",
       "address",
       "uint256",
+      "bytes32",
       "uint256",
     ],
     [
-      initParams.rewardToken, //
-      0, //
-      initParams.lpToken, //
+      initParams.rewardToken,
+      initParams.amount,
+      initParams.lpToken,
       initParams.startBlock,
       initParams.endBlock,
-      parseEther("0.25"), // 25% APR
-      initParams.harvestInterval, //
-      initParams.owner, //
-      initParams.withdrawalFeeBP, //
-      initParams.owner, //
+      initParams.expectedAPR,
+      initParams.harvestInterval,
+      initParams.feeAddress,
+      initParams.withdrawalFeeBP,
+      initParams.owner,
       "https://cryption-network-local.infura-ipfs.io/ipfs/QmbCguTQzatdB3ebFVBq43B36g24e1DTSvPqw6YEpRG1ug", //
       "https://cryption-network-local.infura-ipfs.io/ipfs/QmYcftrjFV4qRGixg8FZekc4siPndaQyYX1oJoJ1U9ie2g", //
-      ethers.constants.AddressZero, //
+      hre.ethers.constants.AddressZero,
       initParams.endBlock,
-      "0xce227ade24c76330c347342b8ed8323f4375b0b7948d2bb13fec8cabab4b1cf5", //Current Merkel Root so all addresses get automaitcally whitelisted
-      initParams.maxAllowedDeposit, //
+      initParams.merkleRoot,
+      initParams.maxAllowedDeposit,
     ]
   );
 
@@ -88,7 +102,7 @@ async function main() {
     stakingPoolFixedAPRMerkleWhitelistingInstance.address
   );
 
-  await sleep(20000);
+  await sleep(50000);
 
   await hre.run("verify:verify", {
     address: stakingPoolFixedAPRMerkleWhitelistingInstance.address,
